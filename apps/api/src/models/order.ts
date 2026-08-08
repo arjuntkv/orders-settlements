@@ -35,10 +35,14 @@ const orderSchema = new Schema(
   { timestamps: true },
 );
 
-// dashboard: filter by status (+ overdue = status != paid AND dueDate < today)
-orderSchema.index({ userId: 1, paymentStatus: 1, dueDate: 1 });
-// default listing, newest first
+// three indexes for the three dashboard query shapes; every one leads with
+// userId so tenant scoping is never a scan
+// unfiltered listing, newest first
 orderSchema.index({ userId: 1, createdAt: -1 });
+// status filter, newest first — equality + equality + sort, no blocking sort
+orderSchema.index({ userId: 1, paymentStatus: 1, createdAt: -1 });
+// overdue filter: unpaid statuses + dueDate range
+orderSchema.index({ userId: 1, paymentStatus: 1, dueDate: 1 });
 
 export type OrderDoc = InferSchemaType<typeof orderSchema> & { _id: mongoose.Types.ObjectId };
 export const Order = mongoose.model('Order', orderSchema);
