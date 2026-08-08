@@ -3,7 +3,10 @@ import type { NextConfig } from 'next';
 // same-origin proxy: the browser only talks to this app; /api/* is forwarded
 // server-side. The auth cookie stays first-party (sameSite=lax just works)
 // and CORS never enters the picture in any environment.
-const API_PROXY_TARGET = process.env.API_PROXY_TARGET ?? 'http://localhost:4000';
+// tolerate junk values (empty, no scheme, trailing slash) instead of failing
+// the build with "Invalid rewrite found" — fall back to local dev target
+const raw = process.env.API_PROXY_TARGET ?? '';
+const API_PROXY_TARGET = /^https?:\/\//.test(raw) ? raw.replace(/\/+$/, '') : 'http://localhost:4000';
 
 const nextConfig: NextConfig = {
   output: 'standalone',
