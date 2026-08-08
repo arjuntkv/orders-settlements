@@ -5,6 +5,7 @@ import {
   isOverdue,
   maxPaymentCents,
   validatePaymentAmount,
+  validateRefundAmount,
 } from '../src/payments.js';
 import { DomainError } from '../src/errors.js';
 
@@ -68,6 +69,32 @@ describe('validatePaymentAmount', () => {
   it('rejects zero, negative, and fractional amounts', () => {
     for (const amount of [0, -100, 0.5]) {
       expect(() => validatePaymentAmount(amount, 100000, 0)).toThrow(/at least \$0\.01/);
+    }
+  });
+});
+
+describe('validateRefundAmount', () => {
+  it('accepts refunds up to the net amount paid', () => {
+    expect(() => validateRefundAmount(40000, 40000)).not.toThrow();
+    expect(() => validateRefundAmount(1, 40000)).not.toThrow();
+  });
+
+  it('rejects refunds beyond net paid with the maximum refundable', () => {
+    try {
+      validateRefundAmount(40001, 40000);
+      expect.unreachable();
+    } catch (err) {
+      const e = err as DomainError;
+      expect(e.code).toBe('REFUND_EXCEEDS_PAID');
+      expect(e.details?.maxRefundableCents).toBe(40000);
+      expect(e.message).toContain('$400.00');
+    }
+  });
+
+  it('rejects refunds when nothing was paid, and bad amounts', () => {
+    expect(() => validateRefundAmount(100, 0)).toThrow(/nothing to refund/i);
+    for (const amount of [0, -5, 1.5]) {
+      expect(() => validateRefundAmount(amount, 40000)).toThrow(/at least \$0\.01/);
     }
   });
 });

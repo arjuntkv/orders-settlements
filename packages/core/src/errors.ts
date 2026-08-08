@@ -3,6 +3,7 @@ export type DomainErrorCode =
   | 'INVALID_QUANTITY'
   | 'INVALID_LINE_ITEMS'
   | 'OVERPAYMENT'
+  | 'REFUND_EXCEEDS_PAID'
   | 'ORDER_NOT_PAYABLE';
 
 export class DomainError extends Error {

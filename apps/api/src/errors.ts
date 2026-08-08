@@ -19,6 +19,7 @@ export const unauthorized = (msg = 'Authentication required') => new HttpError(4
 
 const DOMAIN_STATUS: Record<string, number> = {
   OVERPAYMENT: 422,
+  REFUND_EXCEEDS_PAID: 422,
   ORDER_NOT_PAYABLE: 409,
   // remaining domain codes are input problems
 };

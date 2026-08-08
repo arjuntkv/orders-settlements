@@ -28,6 +28,30 @@ export function maxPaymentCents(totalCents: number, amountPaidCents: number): nu
   return Math.max(0, totalCents - amountPaidCents);
 }
 
+// refunds are reversal entries against what was actually paid — payments are
+// never mutated or deleted. Net paid can go back to zero, never below.
+export function maxRefundableCents(amountPaidCents: number): number {
+  return Math.max(0, amountPaidCents);
+}
+
+export function validateRefundAmount(amountCents: number, amountPaidCents: number): void {
+  if (!Number.isSafeInteger(amountCents) || amountCents < 1) {
+    throw new DomainError('INVALID_AMOUNT', 'Refund amount must be at least $0.01', {
+      received: amountCents,
+    });
+  }
+  const max = maxRefundableCents(amountPaidCents);
+  if (amountCents > max) {
+    throw new DomainError(
+      'REFUND_EXCEEDS_PAID',
+      max === 0
+        ? 'Nothing has been paid on this order, so there is nothing to refund'
+        : `Refund exceeds the net amount paid. Maximum refundable is ${formatCents(max)}`,
+      { maxRefundableCents: max },
+    );
+  }
+}
+
 export function validatePaymentAmount(amountCents: number, totalCents: number, amountPaidCents: number): void {
   if (!Number.isSafeInteger(amountCents) || amountCents < 1) {
     throw new DomainError('INVALID_AMOUNT', 'Payment amount must be at least $0.01', {

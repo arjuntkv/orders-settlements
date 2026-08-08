@@ -1,6 +1,7 @@
-import { displayStatus, maxPaymentCents, type OrderDTO, type PaymentDTO } from '@orders/core';
+import { displayStatus, maxPaymentCents, type OrderDTO, type PaymentDTO, type RefundDTO } from '@orders/core';
 import type { OrderDoc } from './models/order.js';
 import type { PaymentDoc } from './models/payment.js';
+import type { RefundDoc } from './models/refund.js';
 
 export function todayUtc(): string {
   return new Date().toISOString().slice(0, 10);
@@ -24,6 +25,17 @@ export function toOrderDTO(order: OrderDoc, today = todayUtc()): OrderDTO {
     displayStatus: displayStatus(order.totalCents, order.amountPaidCents, order.dueDate, today),
     createdAt: order.createdAt.toISOString(),
     updatedAt: order.updatedAt.toISOString(),
+  };
+}
+
+export function toRefundDTO(refund: RefundDoc): RefundDTO {
+  return {
+    id: refund._id.toString(),
+    orderId: refund.orderId.toString(),
+    amountCents: refund.amountCents,
+    date: refund.date,
+    note: refund.note ?? undefined,
+    createdAt: refund.createdAt.toISOString(),
   };
 }
 

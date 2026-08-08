@@ -1,7 +1,9 @@
+import { Readable } from 'node:stream';
 import type { FastifyInstance } from 'fastify';
 import mongoose from 'mongoose';
 import { z } from 'zod';
-import { computeOrderTotals } from '@orders/core';
+import { computeOrderTotals, displayStatus, maxPaymentCents } from '@orders/core';
+import { csvLine } from '../csv.js';
 import { Order } from '../models/order.js';
 import { AuditLog } from '../models/audit-log.js';
 import { HttpError, notFound } from '../errors.js';
@@ -52,6 +54,46 @@ export async function orderRoutes(app: FastifyInstance) {
     return { orders: orders.map((o) => toOrderDTO(o, today)) };
   });
 
+  app.get('/orders/export', async (req, reply) => {
+    const { from, to } = z
+      .object({ from: dateSchema.optional(), to: dateSchema.optional() })
+      .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'from must be <= to' })
+      .parse(req.query);
+
+    // range is on the due date — "orders due in a period" is the business
+    // question a finance user asks of this export
+    const filter: Record<string, unknown> = { userId: req.userId };
+    if (from || to) {
+      filter.dueDate = { ...(from && { $gte: from }), ...(to && { $lte: to }) };
+    }
+
+    const today = todayUtc();
+    const cursor = Order.find(filter).sort({ dueDate: 1 }).lean().cursor();
+    const dollars = (cents: number) => (cents / 100).toFixed(2);
+
+    async function* rows() {
+      yield csvLine(['id', 'customer', 'due_date', 'status', 'total', 'amount_paid', 'amount_due', 'created_at']) + '\n';
+      for await (const o of cursor) {
+        yield csvLine([
+          o._id.toString(),
+          o.customer,
+          o.dueDate,
+          displayStatus(o.totalCents, o.amountPaidCents, o.dueDate, today),
+          dollars(o.totalCents),
+          dollars(o.amountPaidCents),
+          dollars(maxPaymentCents(o.totalCents, o.amountPaidCents)),
+          o.createdAt.toISOString(),
+        ]) + '\n';
+      }
+    }
+
+    const range = [from && `from-${from}`, to && `to-${to}`].filter(Boolean).join('-');
+    return reply
+      .header('content-type', 'text/csv; charset=utf-8')
+      .header('content-disposition', `attachment; filename="orders${range ? `-${range}` : ''}.csv"`)
+      .send(Readable.from(rows()));
+  });
+
   app.post('/orders', async (req, reply) => {
     const body = orderBodySchema.parse(req.body);
     const totals = computeOrderTotals(body.lineItems);
@@ -83,7 +125,7 @@ export async function orderRoutes(app: FastifyInstance) {
       throw new HttpError(
         409,
         'ORDER_LOCKED',
-        'Orders with recorded payments are read-only. Delete is also blocked; record a correcting order instead.',
+        'Orders are read-only while any net amount is paid. Refund payments first, or record a correcting order.',
       );
     }
     return { order: toOrderDTO(order) };

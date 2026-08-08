@@ -308,6 +308,128 @@ describe('concurrency', () => {
   });
 });
 
+describe('refunds', () => {
+  async function pay(token: string, orderId: string, amountCents: number) {
+    return app.inject({
+      method: 'POST',
+      url: `/orders/${orderId}/payments`,
+      cookies: { token },
+      payload: { amountCents, date: '2026-08-08' },
+    });
+  }
+  async function refund(token: string, orderId: string, amountCents: number) {
+    return app.inject({
+      method: 'POST',
+      url: `/orders/${orderId}/refunds`,
+      cookies: { token },
+      payload: { amountCents, date: '2026-08-09' },
+    });
+  }
+
+  it('walks status back down and unlocks edits at net zero', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const order = await createOrder(app, token); // $1,000
+    await pay(token, order.id, 100000);
+
+    const r1 = await refund(token, order.id, 40000);
+    expect(r1.statusCode).toBe(201);
+    expect(r1.json().order.paymentStatus).toBe('partially_paid');
+    expect(r1.json().order.amountPaidCents).toBe(60000);
+
+    const r2 = await refund(token, order.id, 60000);
+    expect(r2.json().order.paymentStatus).toBe('pending');
+    expect(r2.json().order.amountPaidCents).toBe(0);
+
+    // net paid is zero again, so the order is editable again
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/orders/${order.id}`,
+      cookies: { token },
+      payload: {
+        customer: 'Edited',
+        dueDate: '2099-03-01',
+        lineItems: [{ description: 'X', quantity: 1, unitPriceCents: 500 }],
+      },
+    });
+    expect(patch.statusCode).toBe(200);
+
+    const audit = await app.inject({ method: 'GET', url: `/orders/${order.id}/audit`, cookies: { token } });
+    const refundEvents = audit.json().entries.filter((e: { event: string }) => e.event === 'refund_recorded');
+    expect(refundEvents).toHaveLength(2);
+  });
+
+  it('rejects refunds beyond net paid with the maximum refundable', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const order = await createOrder(app, token);
+    await pay(token, order.id, 40000);
+
+    const res = await refund(token, order.id, 40001);
+    expect(res.statusCode).toBe(422);
+    expect(res.json().code).toBe('REFUND_EXCEEDS_PAID');
+    expect(res.json().details.maxRefundableCents).toBe(40000);
+
+    const history = await app.inject({ method: 'GET', url: `/orders/${order.id}/refunds`, cookies: { token } });
+    expect(history.json().refunds).toHaveLength(0);
+  });
+
+  it('never over-refunds when parallel refunds race', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const order = await createOrder(app, token);
+    await pay(token, order.id, 100000);
+
+    // 5 x $400 fired concurrently against $1,000 paid: at most 2 fit
+    const results = await Promise.all(Array.from({ length: 5 }, () => refund(token, order.id, 40000)));
+    expect(results.filter((r) => r.statusCode === 201)).toHaveLength(2);
+    expect(results.filter((r) => r.statusCode === 422)).toHaveLength(3);
+
+    const final = await app.inject({ method: 'GET', url: `/orders/${order.id}`, cookies: { token } });
+    expect(final.json().order.amountPaidCents).toBe(20000);
+  });
+});
+
+describe('csv export', () => {
+  it('exports orders in a due-date range with correct escaping', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    await createOrder(app, token, { customer: 'Acme, "Intl"', dueDate: '2026-05-10' });
+    await createOrder(app, token, { customer: 'Out of range', dueDate: '2026-09-01' });
+    const inRange = await createOrder(app, token, { customer: 'Globex', dueDate: '2026-06-01' });
+    await app.inject({
+      method: 'POST',
+      url: `/orders/${inRange.id}/payments`,
+      cookies: { token },
+      payload: { amountCents: 40000, date: '2026-08-08' },
+    });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/orders/export?from=2026-05-01&to=2026-06-30',
+      cookies: { token },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('orders-from-2026-05-01-to-2026-06-30.csv');
+
+    const lines = res.body.trim().split('\n');
+    expect(lines).toHaveLength(3); // header + 2 in-range orders
+    expect(lines[0]).toBe('id,customer,due_date,status,total,amount_paid,amount_due,created_at');
+    // comma and quotes in the customer name survive round-tripping
+    expect(lines[1]).toContain('"Acme, ""Intl"""');
+    expect(lines[2]).toContain('Globex');
+    expect(lines[2]).toContain('1000.00,400.00,600.00');
+    expect(res.body).not.toContain('Out of range');
+  });
+
+  it('rejects an inverted range', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const res = await app.inject({
+      method: 'GET',
+      url: '/orders/export?from=2026-06-01&to=2026-05-01',
+      cookies: { token },
+    });
+    expect(res.statusCode).toBe(400);
+  });
+});
+
 describe('audit log', () => {
   it('appends before/after for every recorded payment', async () => {
     const token = await signupAndGetCookie(app, 'user@example.com');

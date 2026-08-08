@@ -30,6 +30,15 @@ export interface PaymentDTO {
   createdAt: string;
 }
 
+export interface RefundDTO {
+  id: string;
+  orderId: string;
+  amountCents: number;
+  date: string;
+  note?: string;
+  createdAt: string;
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;

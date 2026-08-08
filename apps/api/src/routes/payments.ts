@@ -6,7 +6,9 @@ import { AuditLog } from '../models/audit-log.js';
 import { Order } from '../models/order.js';
 import { notFound } from '../errors.js';
 import { recordPayment } from '../services/record-payment.js';
-import { toOrderDTO, toPaymentDTO } from '../serializers.js';
+import { recordRefund } from '../services/record-refund.js';
+import { Refund } from '../models/refund.js';
+import { toOrderDTO, toPaymentDTO, toRefundDTO } from '../serializers.js';
 
 const paymentBodySchema = z.object({
   amountCents: z.number().int('Amount must be integer cents').min(1, 'Payment amount must be at least $0.01'),
@@ -46,6 +48,32 @@ export async function paymentRoutes(app: FastifyInstance) {
     if (!order) throw notFound('Order');
     const payments = await Payment.find({ orderId }).sort({ createdAt: -1 });
     return { payments: payments.map(toPaymentDTO) };
+  });
+
+  app.post('/orders/:id/refunds', async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = paymentBodySchema.parse(req.body);
+    const idempotencyKey = (req.headers['idempotency-key'] as string | undefined)?.slice(0, 200);
+
+    const { order, refund, replayed } = await recordRefund({
+      userId: req.userId,
+      orderId: objectId(id),
+      ...body,
+      idempotencyKey,
+    });
+
+    return reply
+      .status(replayed ? 200 : 201)
+      .send({ order: toOrderDTO(order), refund: toRefundDTO(refund), replayed });
+  });
+
+  app.get('/orders/:id/refunds', async (req) => {
+    const { id } = req.params as { id: string };
+    const orderId = objectId(id);
+    const order = await Order.exists({ _id: orderId, userId: req.userId });
+    if (!order) throw notFound('Order');
+    const refunds = await Refund.find({ orderId }).sort({ createdAt: -1 });
+    return { refunds: refunds.map(toRefundDTO) };
   });
 
   app.get('/orders/:id/audit', async (req) => {
