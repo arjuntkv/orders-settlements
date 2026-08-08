@@ -1,1 +1,7 @@
 @import "tailwindcss";
+
+/* tailwind v4 resets buttons to cursor: default; restore the pointer for
+   anything clickable, keep the default for disabled states */
+button:not(:disabled) {
+  cursor: pointer;
+}
