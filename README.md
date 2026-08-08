@@ -171,6 +171,8 @@ What changes as this grows, in order:
 
 The browser only ever talks to the web app: Next.js proxies `/api/*` to the API server-side (`apps/web/next.config.ts`). That keeps the auth cookie first-party (`sameSite=lax` works with no cross-site exceptions), removes CORS from production entirely, and means one public URL. With `output: 'standalone'` the rewrite target is baked at build time, so it's a Docker build arg (`API_PROXY_TARGET`).
 
+`render.yaml` is a Render Blueprint that creates both services (Docker, free plan, health check wired). The click-path: push to GitHub → Render → New → Blueprint → select the repo → enter `MONGO_URL` and `JWT_SECRET` when prompted → after `orders-api` is live, set `API_PROXY_TARGET` on `orders-web` to its URL and redeploy.
+
 The stack is a stateless API container + a Next container + MongoDB, so any container platform works:
 
 - **DB**: MongoDB Atlas (free M0 works) — a real replica set, so transactions work with no local-dev workarounds. Create a database user with `readWrite` on the app database only (not a cluster-admin user), and set `MONGO_URL` to the `mongodb+srv://` string. The same URL works for local dev too — the bundled Docker mongo is a convenience, not a requirement.

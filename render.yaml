@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: orders-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: MONGO_URL
+        sync: false # Atlas connection string, entered at blueprint creation
+      - key: JWT_SECRET
+        sync: false # openssl rand -hex 32
+      # CORS_ORIGIN is intentionally left at its localhost default: the browser
+      # reaches this API only through the web app's same-origin /api proxy
+
+  - type: web
+    name: orders-web
+    runtime: docker
+    plan: free
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: API_PROXY_TARGET
+        sync: false # the orders-api public URL; set after its first deploy, then redeploy
