@@ -3,6 +3,9 @@ import { DomainError } from './errors.js';
 // All money is integer cents. Floats never touch arithmetic; parsing and
 // formatting are the only places a decimal representation exists.
 
+// single-currency today; multi-currency would move this onto the order
+export const DEFAULT_CURRENCY = 'USD';
+
 export function assertCents(value: number, field: string): void {
   if (!Number.isSafeInteger(value) || value < 0) {
     throw new DomainError('INVALID_AMOUNT', `${field} must be a non-negative integer amount in cents`, {

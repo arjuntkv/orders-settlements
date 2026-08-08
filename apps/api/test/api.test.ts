@@ -491,6 +491,7 @@ describe('audit log', () => {
     const entries = audit.json().entries;
     expect(entries).toHaveLength(1);
     expect(entries[0].event).toBe('payment_recorded');
+    expect(entries[0].currency).toBe('USD');
     expect(entries[0].before.paymentStatus).toBe('pending');
     expect(entries[0].after.paymentStatus).toBe('paid');
   });

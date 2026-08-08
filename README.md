@@ -130,7 +130,7 @@ Refunds are **reversal entries, not negative payments**: payments stay immutable
 |---|---|---|
 | `orders` | line items **embedded**, `amountPaidCents` + `paymentStatus` denormalized | line items are always read with the order, bounded (≤100), never queried alone; the denormalized fields are what the guard conditions on and are only written inside the transaction |
 | `payments` / `refunds` | **separate** collections | unbounded growth, own history views, immutable entries; unique partial index on `(orderId, idempotencyKey)` |
-| `audit_logs` | append-only `{event, before, after, at}` | written in the same transaction as the payment, so the trail can't miss a write |
+| `audit_logs` | append-only `{event, currency, before, after, at}` | written in the same transaction as the payment, so the trail can't miss a write; money events record their currency because amounts without one are ambiguous in an audit trail |
 
 Indexes on `orders` — every one leads with `userId`, so tenant scoping is never a scan:
 

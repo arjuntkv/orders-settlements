@@ -86,6 +86,7 @@ export async function paymentRoutes(app: FastifyInstance) {
       entries: entries.map((e) => ({
         id: e._id.toString(),
         event: e.event,
+        currency: e.currency ?? undefined,
         before: e.before,
         after: e.after,
         at: e.at?.toISOString(),

@@ -1,5 +1,11 @@
 import mongoose from 'mongoose';
-import { DomainError, derivePaymentStatus, maxPaymentCents, validatePaymentAmount } from '@orders/core';
+import {
+  DEFAULT_CURRENCY,
+  DomainError,
+  derivePaymentStatus,
+  maxPaymentCents,
+  validatePaymentAmount,
+} from '@orders/core';
 import { Order, type OrderDoc } from '../models/order.js';
 import { Payment, type PaymentDoc } from '../models/payment.js';
 import { AuditLog } from '../models/audit-log.js';
@@ -87,6 +93,7 @@ export async function recordPayment(input: RecordPaymentInput): Promise<RecordPa
             userId,
             orderId,
             event: 'payment_recorded',
+            currency: DEFAULT_CURRENCY,
             before,
             after: {
               amountPaidCents: updated.amountPaidCents,

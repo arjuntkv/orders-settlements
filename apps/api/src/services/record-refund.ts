@@ -1,5 +1,11 @@
 import mongoose from 'mongoose';
-import { DomainError, derivePaymentStatus, maxRefundableCents, validateRefundAmount } from '@orders/core';
+import {
+  DEFAULT_CURRENCY,
+  DomainError,
+  derivePaymentStatus,
+  maxRefundableCents,
+  validateRefundAmount,
+} from '@orders/core';
 import { Order, type OrderDoc } from '../models/order.js';
 import { Refund, type RefundDoc } from '../models/refund.js';
 import { AuditLog } from '../models/audit-log.js';
@@ -83,6 +89,7 @@ export async function recordRefund(input: RecordRefundInput): Promise<RecordRefu
             userId,
             orderId,
             event: 'refund_recorded',
+            currency: DEFAULT_CURRENCY,
             before,
             after: {
               amountPaidCents: updated.amountPaidCents,
