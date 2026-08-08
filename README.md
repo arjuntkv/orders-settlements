@@ -171,7 +171,7 @@ What changes as this grows, in order:
 
 The stack is a stateless API container + a static-ish Next container + MongoDB, so any container platform works:
 
-- **DB**: MongoDB Atlas (M0 works) — gives you the replica set transactions need
+- **DB**: MongoDB Atlas (free M0 works) — a real replica set, so transactions work with no local-dev workarounds. Create a database user with `readWrite` on the app database only (not a cluster-admin user), and set `MONGO_URL` to the `mongodb+srv://` string. The same URL works for local dev too — the bundled Docker mongo is a convenience, not a requirement.
 - **API**: build `apps/api/Dockerfile`, push to ECR, run on AWS App Runner; set `MONGO_URL`, `JWT_SECRET` (SSM Parameter Store), `CORS_ORIGIN`
 - **Web**: build `apps/web/Dockerfile` with `NEXT_PUBLIC_API_URL` pointing at the API, run on App Runner (or Vercel)
 - Cookies are `sameSite=lax`, so serve web and API from the same site (subdomains of one domain) in production
