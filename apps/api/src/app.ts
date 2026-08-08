@@ -3,6 +3,8 @@ import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import type { Config } from './config.js';
 import { errorHandler } from './errors.js';
+import { authPlugin } from './plugins/auth.js';
+import { authRoutes } from './routes/auth.js';
 
 export async function buildApp(config: Config) {
   const app = Fastify({
@@ -17,6 +19,8 @@ export async function buildApp(config: Config) {
 
   await app.register(cookie);
   await app.register(cors, { origin: config.CORS_ORIGIN, credentials: true });
+  await app.register(authPlugin);
+  await app.register(authRoutes);
 
   app.get('/health', async () => ({ status: 'ok' }));
 
