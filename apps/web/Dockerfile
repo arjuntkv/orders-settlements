@@ -2,9 +2,10 @@
 FROM node:22-alpine AS build
 RUN corepack enable
 WORKDIR /repo
-# NEXT_PUBLIC_* is inlined into the client bundle at build time
-ARG NEXT_PUBLIC_API_URL=http://localhost:4000
-ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+# standalone output bakes rewrites into the build manifest, so the proxy
+# target is build-time config, not runtime
+ARG API_PROXY_TARGET=http://localhost:4000
+ENV API_PROXY_TARGET=$API_PROXY_TARGET
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 COPY packages/core/package.json packages/core/
 COPY apps/web/package.json apps/web/
