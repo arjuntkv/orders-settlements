@@ -1,4 +1,32 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "4000:4000"
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      MONGO_URL: mongodb://mongo:27017/orders?replicaSet=rs0&directConnection=true
+      # local development default — any real deployment must set its own
+      JWT_SECRET: ${JWT_SECRET:-dev-only-local-compose-secret-do-not-deploy}
+      CORS_ORIGIN: http://localhost:3000
+    depends_on:
+      mongo:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:4000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
   mongo:
     image: mongo:7
     # single-node replica set: transactions require a replset, even locally
