@@ -6,6 +6,8 @@ import { Order } from '../models/order.js';
 import { Payment } from '../models/payment.js';
 import { AuditLog } from '../models/audit-log.js';
 import { recordPayment } from '../services/record-payment.js';
+import { recordRefund } from '../services/record-refund.js';
+import { Refund } from '../models/refund.js';
 import { computeOrderTotals } from '@orders/core';
 
 const DEMO_EMAIL = 'demo@example.com';
@@ -18,6 +20,7 @@ const existing = await User.findOne({ email: DEMO_EMAIL });
 if (existing) {
   const orderIds = (await Order.find({ userId: existing._id }).select('_id')).map((o) => o._id);
   await Payment.deleteMany({ orderId: { $in: orderIds } });
+  await Refund.deleteMany({ orderId: { $in: orderIds } });
   await AuditLog.deleteMany({ orderId: { $in: orderIds } });
   await Order.deleteMany({ userId: existing._id });
   await User.deleteOne({ _id: existing._id });
@@ -37,6 +40,7 @@ async function seedOrder(
   dueInDays: number,
   lines: { description: string; quantity: number; unitPriceCents: number }[],
   paymentsCents: number[] = [],
+  refundsCents: number[] = [],
 ) {
   const order = await Order.create({
     userId: user._id,
@@ -50,24 +54,80 @@ async function seedOrder(
       userId: user._id.toString(),
       orderId: order._id,
       amountCents,
+      date: iso(-2),
+    });
+  }
+  for (const amountCents of refundsCents) {
+    await recordRefund({
+      userId: user._id.toString(),
+      orderId: order._id,
+      amountCents,
       date: iso(-1),
+      note: 'partial return',
     });
   }
   return order;
 }
 
-await seedOrder('Acme LLC', 7, [{ description: 'Consulting', quantity: 2, unitPriceCents: 50000 }], [40000]);
-await seedOrder('Globex FZ-LLC', 14, [
-  { description: 'Platform license', quantity: 1, unitPriceCents: 250000 },
-  { description: 'Onboarding', quantity: 10, unitPriceCents: 15000 },
+// one order per dashboard state a reviewer should see, plus refund history
+await seedOrder('Falcon Logistics FZ-LLC', 21, [
+  { description: 'Fleet tracking platform license', quantity: 12, unitPriceCents: 25000 },
+  { description: 'Driver onboarding', quantity: 40, unitPriceCents: 4500 },
 ]);
-await seedOrder('Initech DMCC', -3, [{ description: 'Audit support', quantity: 5, unitPriceCents: 30000 }], [50000]);
 await seedOrder(
-  'Umbrella Trading',
-  -10,
-  [{ description: 'Data migration', quantity: 1, unitPriceCents: 80000 }],
-  [80000],
+  'Qamar Tech Solutions FZE',
+  7,
+  [
+    { description: 'API integration sprint', quantity: 2, unitPriceCents: 600000 },
+    { description: 'Code review retainer', quantity: 1, unitPriceCents: 150000 },
+  ],
+  [500000],
+);
+// was overdue, then settled in full — shows paid wins over overdue
+await seedOrder(
+  'Zafran Foods Trading LLC',
+  -12,
+  [{ description: 'Cold-chain compliance audit', quantity: 3, unitPriceCents: 120000 }],
+  [360000],
+);
+await seedOrder(
+  'Serai Hospitality Group',
+  -5,
+  [
+    { description: 'Booking engine setup', quantity: 1, unitPriceCents: 850000 },
+    { description: 'Staff training session', quantity: 6, unitPriceCents: 30000 },
+  ],
+  [400000],
+);
+await seedOrder('Northline Freight LLC', -2, [
+  { description: 'Customs clearance batch', quantity: 15, unitPriceCents: 22000 },
+]);
+await seedOrder(
+  'Pearl District Realty',
+  14,
+  [
+    { description: 'CRM migration', quantity: 1, unitPriceCents: 720000 },
+    { description: 'Data cleanup', quantity: 20, unitPriceCents: 8500 },
+  ],
+  [890000],
+);
+await seedOrder(
+  'Harbor Lane Interiors',
+  30,
+  [{ description: 'Showroom fit-out consultation', quantity: 5, unitPriceCents: 90000 }],
+  [200000],
+  [50000],
+);
+// paid then fully refunded: net zero, order unlocked again
+await seedOrder(
+  'Atlas Marine Services DMCC',
+  3,
+  [{ description: 'Vessel inspection', quantity: 2, unitPriceCents: 175000 }],
+  [350000],
+  [350000],
 );
 
-console.log(`Seeded ${DEMO_EMAIL} / ${DEMO_PASSWORD} with 4 orders (partial, pending, overdue, paid)`);
+console.log(
+  `Seeded ${DEMO_EMAIL} / ${DEMO_PASSWORD}: 8 orders covering pending, partially paid, paid, overdue, overdue-then-paid, and refund histories`,
+);
 await disconnectDb();
