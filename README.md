@@ -2,6 +2,10 @@
 
 Small B2B-style app: create orders with line items, record full or partial payments against them, and track status (`pending` / `partially_paid` / `paid` / `overdue`) on a dashboard.
 
+**Live demo:** https://orders-web-omed.onrender.com
+Demo login: `demo@example.com` / `demo12345` — or sign up with any email.
+*Hosted on free tiers: the first request after ~15 minutes of idle cold-starts in roughly a minute; subsequent requests are instant.*
+
 Built as a take-home assignment. The interesting parts are the payment write path (transactional, race-safe, idempotent), the derived-status model, and the index design — details below.
 
 ## Stack
@@ -175,6 +179,8 @@ What changes as this grows, in order:
 5. **Ops.** Health checks already exist; add structured log shipping, alarms on p95 and transaction-abort rate, backups with tested restore (Atlas handles PITR), and rate limiting on auth endpoints.
 
 ## Deployment
+
+Deployed at **https://orders-web-omed.onrender.com** — web and API as Docker services on Render (via the `render.yaml` Blueprint), MongoDB on Atlas (free M0 replica set).
 
 The browser only ever talks to the web app: Next.js proxies `/api/*` to the API server-side (`apps/web/next.config.ts`). That keeps the auth cookie first-party (`sameSite=lax` works with no cross-site exceptions), removes CORS from production entirely, and means one public URL. With `output: 'standalone'` the rewrite target is baked at build time, so it's a Docker build arg (`API_PROXY_TARGET`).
 

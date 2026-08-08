@@ -163,6 +163,53 @@ describe('order lifecycle', () => {
     expect(del.statusCode).toBe(409);
   });
 
+  it('deletes an unpaid order', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const order = await createOrder(app, token);
+    const del = await app.inject({ method: 'DELETE', url: `/orders/${order.id}`, cookies: { token } });
+    expect(del.statusCode).toBe(204);
+    const gone = await app.inject({ method: 'GET', url: `/orders/${order.id}`, cookies: { token } });
+    expect(gone.statusCode).toBe(404);
+  });
+
+  it('rejects invalid payment amounts at the API boundary', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const order = await createOrder(app, token);
+    for (const amountCents of [0, -100, 10.5]) {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/orders/${order.id}/payments`,
+        cookies: { token },
+        payload: { amountCents, date: '2026-08-08' },
+      });
+      expect(res.statusCode).toBe(400);
+      expect(res.json().code).toBe('VALIDATION_ERROR');
+    }
+  });
+
+  it('filters by paid and partially_paid status', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const fullyPaid = await createOrder(app, token, { customer: 'Paid Co' });
+    const partlyPaid = await createOrder(app, token, { customer: 'Partial Co' });
+    await app.inject({
+      method: 'POST',
+      url: `/orders/${fullyPaid.id}/payments`,
+      cookies: { token },
+      payload: { amountCents: 100000, date: '2026-08-08' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/orders/${partlyPaid.id}/payments`,
+      cookies: { token },
+      payload: { amountCents: 100, date: '2026-08-08' },
+    });
+
+    const paid = await app.inject({ method: 'GET', url: '/orders?status=paid', cookies: { token } });
+    expect(paid.json().orders.map((o: { customer: string }) => o.customer)).toEqual(['Paid Co']);
+    const partial = await app.inject({ method: 'GET', url: '/orders?status=partially_paid', cookies: { token } });
+    expect(partial.json().orders.map((o: { customer: string }) => o.customer)).toEqual(['Partial Co']);
+  });
+
   it('derives overdue at read time and filters on it', async () => {
     const token = await signupAndGetCookie(app, 'user@example.com');
     await createOrder(app, token, { dueDate: '2020-01-01' });
