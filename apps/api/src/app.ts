@@ -6,6 +6,7 @@ import { errorHandler } from './errors.js';
 import { authPlugin } from './plugins/auth.js';
 import { authRoutes } from './routes/auth.js';
 import { orderRoutes } from './routes/orders.js';
+import { paymentRoutes } from './routes/payments.js';
 
 export async function buildApp(config: Config) {
   const app = Fastify({
@@ -23,6 +24,7 @@ export async function buildApp(config: Config) {
   await app.register(authPlugin);
   await app.register(authRoutes);
   await app.register(orderRoutes);
+  await app.register(paymentRoutes);
 
   app.get('/health', async () => ({ status: 'ok' }));
 
