@@ -19,6 +19,9 @@ export function useApi<T>(path: string | null) {
       setError(null);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
+        // clear a stale/invalid cookie so the middleware gate agrees with
+        // the API about who is logged in; ignore failures
+        void api('/auth/logout', { method: 'POST' }).catch(() => {});
         router.push('/login');
         return;
       }

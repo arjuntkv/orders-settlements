@@ -12,9 +12,9 @@ export function middleware(req: NextRequest) {
   if (!hasSession && !isAuthPage) {
     return NextResponse.redirect(new URL('/login', req.url));
   }
-  if (hasSession && isAuthPage) {
-    return NextResponse.redirect(new URL('/orders', req.url));
-  }
+  // deliberately NO redirect away from /login for cookie-holders: presence
+  // of a cookie doesn't prove validity, and a stale cookie would otherwise
+  // loop login -> orders -> 401 -> login forever
   return NextResponse.next();
 }
 
