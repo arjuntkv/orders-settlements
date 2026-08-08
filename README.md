@@ -175,7 +175,7 @@ The stack is a stateless API container + a Next container + MongoDB, so any cont
 
 - **DB**: MongoDB Atlas (free M0 works) — a real replica set, so transactions work with no local-dev workarounds. Create a database user with `readWrite` on the app database only (not a cluster-admin user), and set `MONGO_URL` to the `mongodb+srv://` string. The same URL works for local dev too — the bundled Docker mongo is a convenience, not a requirement.
 - **API**: deploy `apps/api/Dockerfile` (build context = repo root) with `MONGO_URL`, `JWT_SECRET`, `CORS_ORIGIN` set from the platform's secret store. Works as-is on Render, Railway, Fly, or AWS App Runner via ECR.
-- **Web**: deploy `apps/web/Dockerfile` with the `API_PROXY_TARGET` build arg pointing at the API service's URL.
+- **Web**: deploy `apps/web/Dockerfile` with the `API_PROXY_TARGET` build arg pointing at the API service's URL — or skip Docker and put it on Vercel (root directory `apps/web`, build command `pnpm --filter @orders/core build && next build`, `API_PROXY_TARGET` env var). The API stays a long-running server either way; it isn't shaped for serverless.
 
 ## Assumptions & tradeoffs
 
