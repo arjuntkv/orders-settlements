@@ -6,8 +6,41 @@ import { formatCents, type OrderDTO } from '@orders/core';
 import { Shell } from '@/components/shell';
 import { StatusBadge } from '@/components/status-badge';
 import { useApi } from '@/lib/use-api';
+import { API_BASE } from '@/lib/api';
 
 const FILTERS = ['all', 'pending', 'partially_paid', 'paid', 'overdue'] as const;
+
+function ExportControls() {
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const params = new URLSearchParams({ ...(from && { from }), ...(to && { to }) }).toString();
+
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <input
+        type="date"
+        value={from}
+        onChange={(e) => setFrom(e.target.value)}
+        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 outline-none focus:border-slate-500"
+        aria-label="Export from due date"
+      />
+      <span className="text-slate-400">–</span>
+      <input
+        type="date"
+        value={to}
+        onChange={(e) => setTo(e.target.value)}
+        className="rounded-md border border-slate-300 bg-white px-2 py-1.5 outline-none focus:border-slate-500"
+        aria-label="Export to due date"
+      />
+      <a
+        href={`${API_BASE}/orders/export${params ? `?${params}` : ''}`}
+        className="rounded-md border border-slate-300 bg-white px-3 py-1.5 font-medium text-slate-700 hover:bg-slate-50"
+      >
+        Export CSV
+      </a>
+    </div>
+  );
+}
 
 function Dashboard() {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]>('all');
@@ -26,7 +59,8 @@ function Dashboard() {
         </Link>
       </div>
 
-      <div className="mb-4 flex gap-1">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex gap-1">
         {FILTERS.map((f) => (
           <button
             key={f}
@@ -38,6 +72,8 @@ function Dashboard() {
             {f.replace('_', ' ')}
           </button>
         ))}
+        </div>
+        <ExportControls />
       </div>
 
       {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}

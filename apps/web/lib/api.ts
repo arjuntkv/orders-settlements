@@ -1,6 +1,7 @@
 import type { ApiErrorBody } from '@orders/core';
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
+export const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
+const BASE = API_BASE;
 
 export class ApiError extends Error {
   constructor(

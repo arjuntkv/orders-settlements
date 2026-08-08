@@ -2,7 +2,7 @@
 
 import { use, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { formatCents, parseMoneyToCents, type OrderDTO, type PaymentDTO } from '@orders/core';
+import { formatCents, parseMoneyToCents, type OrderDTO, type PaymentDTO, type RefundDTO } from '@orders/core';
 import { Shell } from '@/components/shell';
 import { StatusBadge } from '@/components/status-badge';
 import { api, ApiError } from '@/lib/api';
@@ -68,6 +68,84 @@ function DueDate({ order, onSaved }: { order: OrderDTO; onSaved: () => void }) {
       </button>
       {error && <span className="text-red-700">{error}</span>}
     </div>
+  );
+}
+
+function RefundForm({ order, onRecorded }: { order: OrderDTO; onRecorded: () => void }) {
+  const [amount, setAmount] = useState('');
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
+    const amountCents = parseMoneyToCents(amount);
+    if (amountCents === null || amountCents < 1) {
+      setError('Enter a valid amount like 400 or 400.50');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api(`/orders/${order.id}/refunds`, {
+        method: 'POST',
+        headers: { 'idempotency-key': idempotencyKey },
+        body: JSON.stringify({ amountCents, date, note: note || undefined }),
+      });
+      onRecorded();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Network error, try again');
+      setBusy(false);
+    }
+  }
+
+  return (
+    <form onSubmit={submit} className="mt-4 space-y-3 rounded-lg border border-slate-200 bg-white p-4">
+      <h2 className="font-medium">Record refund</h2>
+      <p className="text-sm text-slate-500">
+        Refundable: <span className="font-medium text-slate-900">{formatCents(order.amountPaidCents)}</span>
+      </p>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium">Amount ($)</span>
+          <input
+            required
+            inputMode="decimal"
+            value={amount}
+            onChange={(e) => setAmount(e.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+          />
+        </label>
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium">Date</span>
+          <input
+            type="date"
+            required
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+          />
+        </label>
+      </div>
+      <label className="block">
+        <span className="mb-1 block text-sm font-medium">Note (optional)</span>
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none focus:border-slate-500"
+        />
+      </label>
+      {error && <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      <button
+        type="submit"
+        disabled={busy}
+        className="rounded-md border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+      >
+        {busy ? 'Recording…' : 'Record refund'}
+      </button>
+    </form>
   );
 }
 
@@ -156,6 +234,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
   const router = useRouter();
   const orderRes = useApi<{ order: OrderDTO }>(`/orders/${id}`);
   const paymentsRes = useApi<{ payments: PaymentDTO[] }>(`/orders/${id}/payments`);
+  const refundsRes = useApi<{ refunds: RefundDTO[] }>(`/orders/${id}/refunds`);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const order = orderRes.data?.order;
@@ -243,6 +322,28 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               </ul>
             )}
 
+            {refundsRes.data && refundsRes.data.refunds.length > 0 && (
+              <>
+                <h2 className="mb-2 mt-6 font-medium">Refunds</h2>
+                <ul className="space-y-2">
+                  {refundsRes.data.refunds.map((r) => (
+                    <li
+                      key={r.id}
+                      className="flex items-center justify-between rounded-md border border-red-100 bg-red-50/50 px-4 py-2 text-sm"
+                    >
+                      <span>
+                        <span className="font-medium tabular-nums text-red-700">
+                          −{formatCents(r.amountCents)}
+                        </span>
+                        <span className="ml-2 text-slate-500">{r.date}</span>
+                      </span>
+                      {r.note && <span className="text-slate-500">{r.note}</span>}
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
+
             {order.amountPaidCents === 0 && (
               <div className="mt-6">
                 <button onClick={remove} className="text-sm text-red-600 underline hover:text-red-800">
@@ -264,6 +365,15 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
                 onRecorded={() => {
                   void orderRes.reload();
                   void paymentsRes.reload();
+                }}
+              />
+            )}
+            {order.amountPaidCents > 0 && (
+              <RefundForm
+                order={order}
+                onRecorded={() => {
+                  void orderRes.reload();
+                  void refundsRes.reload();
                 }}
               />
             )}

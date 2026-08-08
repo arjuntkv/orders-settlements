@@ -69,7 +69,10 @@ The API suite spins up a real MongoDB replica set in memory (first run downloads
 | PATCH | `/orders/:id/due-date` | allowed in any payment state; audit-logged |
 | POST | `/orders/:id/payments` | supports `Idempotency-Key` header; `422 OVERPAYMENT` includes `maxAllowedCents` |
 | GET | `/orders/:id/payments` | payment history |
+| POST | `/orders/:id/refunds` | reversal entry, same idempotency + concurrency guarantees; `422 REFUND_EXCEEDS_PAID` includes `maxRefundableCents` |
+| GET | `/orders/:id/refunds` | refund history |
 | GET | `/orders/:id/audit` | append-only audit trail |
+| GET | `/orders/export?from=&to=` | CSV download, filtered by due date range, streamed from a cursor |
 
 Errors are always `{ code, message, details? }` with actionable messages — an over-payment tells you the maximum you can still record.
 
@@ -109,16 +112,20 @@ Verified two ways: an integration test (10 parallel payments) and the benchmark 
 
 ### Lifecycle
 
-Orders are **editable until the first payment, then read-only** (including delete). The spec allows either choice; this one keeps the paid amount and the order total from drifting apart — editing a $1,000 order down to $500 after a $700 payment has no sane answer. The lock is enforced atomically (the `amountPaidCents: 0` condition is part of the update filter), so an edit racing a first payment can't slip through. Corrections are modeled the way accounting systems do it: a new correcting order (refund entities would be the production version).
+Orders are **editable while the net amount paid is zero, read-only otherwise** (including delete). The spec allows either choice; this one keeps the paid amount and the order total from drifting apart — editing a $1,000 order down to $500 after a $700 payment has no sane answer. A fully refunded order (net paid back to zero) becomes editable again: the money invariant `paid ≤ total` can't be violated from that state. The lock is enforced atomically (the `amountPaidCents: 0` condition is part of the update filter), so an edit racing a first payment can't slip through. Corrections are modeled the way accounting systems do it: a new correcting order (refund entities would be the production version).
 
 The **due date is exempt** from the lock: it's a commercial term (renegotiating payment terms on a partially paid invoice is routine AR — Stripe and Xero both allow it), not a monetary fact. It has its own endpoint so the body-lock rule stays absolute, and every change writes a `due_date_changed` audit entry with before/after. Because `overdue` is derived, the status recomputes instantly on the next read.
+
+### Refunds
+
+Refunds are **reversal entries, not negative payments**: payments stay immutable, refunds are their own append-only collection, and both sides of the ledger read like a bank statement. Recording one is the mirror image of the payment path — same transaction, same idempotency-key handling, and a conditional decrement (`paid − refund ≥ 0`) so parallel refunds can't take net paid below zero. Status walks back down (`paid → partially_paid → pending`) from the same `derivePaymentStatus` function, and every refund writes a `refund_recorded` audit entry.
 
 ### Data model
 
 | Collection | Shape | Why |
 |---|---|---|
 | `orders` | line items **embedded**, `amountPaidCents` + `paymentStatus` denormalized | line items are always read with the order, bounded (≤100), never queried alone; the denormalized fields are what the guard conditions on and are only written inside the transaction |
-| `payments` | **separate** collection | unbounded growth, own history view; unique partial index on `(orderId, idempotencyKey)` |
+| `payments` / `refunds` | **separate** collections | unbounded growth, own history views, immutable entries; unique partial index on `(orderId, idempotencyKey)` |
 | `audit_logs` | append-only `{event, before, after, at}` | written in the same transaction as the payment, so the trail can't miss a write |
 
 Indexes on `orders` — every one leads with `userId`, so tenant scoping is never a scan:
@@ -183,14 +190,15 @@ The stack is a stateless API container + a Next container + MongoDB, so any cont
 
 - Currency is a display concern (`USD` formatting); amounts are currency-agnostic integers. Multi-currency would add a `currency` field per order and forbid mixing.
 - Customer is a plain string per the spec — no customer entity.
-- No refunds: payments are strictly positive and capped at the amount due. Refunds would be a separate entity (auditable reversal), not negative payments.
+- Payments are strictly positive and capped at the amount due; refunds are strictly positive and capped at net paid. Nothing in the ledger is ever mutated or deleted.
+- CSV export ranges filter on the **due date** — "orders due in a period" is the question a finance user asks of that report.
 - Payment `date` is caller-supplied (back-dating a bank settlement is legitimate); `createdAt` records when it was entered — the audit log keeps both honest.
 - Sessions are stateless JWTs (7-day expiry). Revocation before expiry would need a denylist or short-lived tokens + refresh.
 
 ## What I'd improve before production
 
 - Refresh-token rotation and rate limiting on `/auth/*`
-- Refund entities + running balance snapshots
+- Credit notes and cross-order payment allocation (the step beyond simple refunds)
 - Cursor pagination and order search
 - OpenAPI spec generated from the Zod schemas (single source of truth)
 - CI: lint + typecheck + tests on PR, image build on main
