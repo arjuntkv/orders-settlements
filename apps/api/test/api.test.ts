@@ -45,6 +45,25 @@ describe('auth and tenant isolation', () => {
     const res = await app.inject({ method: 'GET', url: '/orders' });
     expect(res.statusCode).toBe(401);
   });
+
+  it('logs out without a request body and clears the cookie', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const res = await app.inject({ method: 'POST', url: '/auth/logout', cookies: { token } });
+    expect(res.statusCode).toBe(200);
+    const cleared = res.cookies.find((c) => c.name === 'token');
+    expect(cleared?.value).toBe('');
+  });
+
+  it('maps fastify client errors to 4xx, not 500', async () => {
+    // json content-type with an empty body is a client mistake, not a crash
+    const res = await app.inject({
+      method: 'POST',
+      url: '/auth/logout',
+      headers: { 'content-type': 'application/json' },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json().message).toMatch(/body cannot be empty/i);
+  });
 });
 
 describe('assignment sample scenario', () => {

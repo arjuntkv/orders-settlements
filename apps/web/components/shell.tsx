@@ -8,7 +8,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   async function logout() {
-    await api('/auth/logout', { method: 'POST' });
+    try {
+      await api('/auth/logout', { method: 'POST' });
+    } catch {
+      // even if the server call fails, leaving the app is the right outcome
+    }
     router.push('/login');
   }
 

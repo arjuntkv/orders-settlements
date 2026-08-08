@@ -15,7 +15,9 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     ...init,
     credentials: 'include',
-    headers: { 'content-type': 'application/json', ...init.headers },
+    // only claim a json body when there is one — fastify rejects an empty
+    // body sent with a json content-type
+    headers: { ...(init.body ? { 'content-type': 'application/json' } : {}), ...init.headers },
   });
   if (res.status === 204) return undefined as T;
   const body = await res.json().catch(() => ({ code: 'BAD_RESPONSE', message: 'Invalid server response' }));

@@ -38,6 +38,15 @@ export function errorHandler(err: FastifyError | Error, req: FastifyRequest, rep
       details: { issues: err.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) },
     });
   }
+  // fastify's own client errors (bad content-type, malformed json, payload
+  // too large) carry a 4xx statusCode — pass them through instead of
+  // masking them as 500s
+  const statusCode = (err as FastifyError).statusCode;
+  if (statusCode && statusCode >= 400 && statusCode < 500) {
+    return reply
+      .status(statusCode)
+      .send({ code: (err as FastifyError).code ?? 'BAD_REQUEST', message: err.message });
+  }
   req.log.error(err);
   return reply.status(500).send({ code: 'INTERNAL', message: 'Something went wrong' });
 }
