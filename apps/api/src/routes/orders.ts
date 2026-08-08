@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { computeOrderTotals } from '@orders/core';
 import { Order } from '../models/order.js';
+import { AuditLog } from '../models/audit-log.js';
 import { HttpError, notFound } from '../errors.js';
 import { todayUtc, toOrderDTO } from '../serializers.js';
 
@@ -86,6 +87,43 @@ export async function orderRoutes(app: FastifyInstance) {
       );
     }
     return { order: toOrderDTO(order) };
+  });
+
+  // due date is exempt from the payment lock: it's a commercial term
+  // (renegotiable, like Stripe/Xero treat it), not a monetary fact. amounts
+  // lock at first payment; term changes stay honest via the audit trail.
+  app.patch('/orders/:id/due-date', async (req) => {
+    const { id } = req.params as { id: string };
+    const { dueDate } = z.object({ dueDate: dateSchema }).parse(req.body);
+    const orderId = objectId(id, 'Order');
+
+    const session = await mongoose.startSession();
+    try {
+      let order: InstanceType<typeof Order> | null = null;
+      await session.withTransaction(async () => {
+        order = await Order.findOne({ _id: orderId, userId: req.userId }).session(session);
+        if (!order) throw notFound('Order');
+        if (order.dueDate === dueDate) return; // no-op: no write, no audit entry
+        const before = order.dueDate;
+        order.dueDate = dueDate;
+        await order.save({ session });
+        await AuditLog.create(
+          [
+            {
+              userId: req.userId,
+              orderId,
+              event: 'due_date_changed',
+              before: { dueDate: before },
+              after: { dueDate },
+            },
+          ],
+          { session },
+        );
+      });
+      return { order: toOrderDTO(order!) };
+    } finally {
+      await session.endSession();
+    }
   });
 
   app.delete('/orders/:id', async (req, reply) => {

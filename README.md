@@ -66,6 +66,7 @@ The API suite spins up a real MongoDB replica set in memory (first run downloads
 | GET | `/orders?status=` | `pending`, `partially_paid`, `paid`, or `overdue` |
 | POST | `/orders` | totals computed server-side |
 | GET/PATCH/DELETE | `/orders/:id` | PATCH/DELETE rejected with `409 ORDER_LOCKED` once a payment exists |
+| PATCH | `/orders/:id/due-date` | allowed in any payment state; audit-logged |
 | POST | `/orders/:id/payments` | supports `Idempotency-Key` header; `422 OVERPAYMENT` includes `maxAllowedCents` |
 | GET | `/orders/:id/payments` | payment history |
 | GET | `/orders/:id/audit` | append-only audit trail |
@@ -109,6 +110,8 @@ Verified two ways: an integration test (10 parallel payments) and the benchmark 
 ### Lifecycle
 
 Orders are **editable until the first payment, then read-only** (including delete). The spec allows either choice; this one keeps the paid amount and the order total from drifting apart — editing a $1,000 order down to $500 after a $700 payment has no sane answer. The lock is enforced atomically (the `amountPaidCents: 0` condition is part of the update filter), so an edit racing a first payment can't slip through. Corrections are modeled the way accounting systems do it: a new correcting order (refund entities would be the production version).
+
+The **due date is exempt** from the lock: it's a commercial term (renegotiating payment terms on a partially paid invoice is routine AR — Stripe and Xero both allow it), not a monetary fact. It has its own endpoint so the body-lock rule stays absolute, and every change writes a `due_date_changed` audit entry with before/after. Because `overdue` is derived, the status recomputes instantly on the next read.
 
 ### Data model
 

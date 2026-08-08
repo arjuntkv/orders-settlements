@@ -8,6 +8,69 @@ import { StatusBadge } from '@/components/status-badge';
 import { api, ApiError } from '@/lib/api';
 import { useApi } from '@/lib/use-api';
 
+function DueDate({ order, onSaved }: { order: OrderDTO; onSaved: () => void }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(order.dueDate);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    setError(null);
+    try {
+      await api(`/orders/${order.id}/due-date`, {
+        method: 'PATCH',
+        body: JSON.stringify({ dueDate: value }),
+      });
+      setEditing(false);
+      onSaved();
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : 'Network error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <p className="mb-4 text-sm text-slate-500">
+        Due {order.dueDate}{' '}
+        <button
+          onClick={() => {
+            setValue(order.dueDate);
+            setEditing(true);
+          }}
+          className="ml-1 underline hover:text-slate-900"
+        >
+          change
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <div className="mb-4 flex items-center gap-2 text-sm">
+      <input
+        type="date"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        className="rounded-md border border-slate-300 px-2 py-1 outline-none focus:border-slate-500"
+      />
+      <button
+        onClick={save}
+        disabled={busy}
+        className="rounded-md bg-slate-900 px-3 py-1 font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+      >
+        Save
+      </button>
+      <button onClick={() => setEditing(false)} className="text-slate-500 hover:text-slate-900">
+        Cancel
+      </button>
+      {error && <span className="text-red-700">{error}</span>}
+    </div>
+  );
+}
+
 function PaymentForm({ order, onRecorded }: { order: OrderDTO; onRecorded: () => void }) {
   const [amount, setAmount] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -118,7 +181,7 @@ export default function OrderDetailPage({ params }: { params: Promise<{ id: stri
               <h1 className="text-xl font-semibold">{order.customer}</h1>
               <StatusBadge status={order.displayStatus} />
             </div>
-            <p className="mb-4 text-sm text-slate-500">Due {order.dueDate}</p>
+            <DueDate order={order} onSaved={() => void orderRes.reload()} />
 
             <div className="mb-6 overflow-x-auto rounded-lg border border-slate-200 bg-white">
               <table className="w-full text-sm">

@@ -166,6 +166,71 @@ describe('order lifecycle', () => {
   });
 });
 
+describe('due date changes', () => {
+  it('allows due date edits after partial payment, audited, while amounts stay locked', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const order = await createOrder(app, token);
+    await app.inject({
+      method: 'POST',
+      url: `/orders/${order.id}/payments`,
+      cookies: { token },
+      payload: { amountCents: 40000, date: '2026-08-08' },
+    });
+
+    const change = await app.inject({
+      method: 'PATCH',
+      url: `/orders/${order.id}/due-date`,
+      cookies: { token },
+      payload: { dueDate: '2099-06-01' },
+    });
+    expect(change.statusCode).toBe(200);
+    expect(change.json().order.dueDate).toBe('2099-06-01');
+
+    // the body lock is untouched: generic PATCH still rejected
+    const patch = await app.inject({
+      method: 'PATCH',
+      url: `/orders/${order.id}`,
+      cookies: { token },
+      payload: {
+        customer: 'X',
+        dueDate: '2099-06-01',
+        lineItems: [{ description: 'X', quantity: 1, unitPriceCents: 1 }],
+      },
+    });
+    expect(patch.statusCode).toBe(409);
+
+    const audit = await app.inject({ method: 'GET', url: `/orders/${order.id}/audit`, cookies: { token } });
+    const entry = audit.json().entries.find((e: { event: string }) => e.event === 'due_date_changed');
+    expect(entry.before.dueDate).toBe('2099-01-01');
+    expect(entry.after.dueDate).toBe('2099-06-01');
+  });
+
+  it('recomputes overdue immediately and skips audit on a no-op change', async () => {
+    const token = await signupAndGetCookie(app, 'user@example.com');
+    const order = await createOrder(app, token);
+
+    // moving the due date into the past flips derived status to overdue
+    const toPast = await app.inject({
+      method: 'PATCH',
+      url: `/orders/${order.id}/due-date`,
+      cookies: { token },
+      payload: { dueDate: '2020-01-01' },
+    });
+    expect(toPast.json().order.displayStatus).toBe('overdue');
+
+    const noop = await app.inject({
+      method: 'PATCH',
+      url: `/orders/${order.id}/due-date`,
+      cookies: { token },
+      payload: { dueDate: '2020-01-01' },
+    });
+    expect(noop.statusCode).toBe(200);
+    const audit = await app.inject({ method: 'GET', url: `/orders/${order.id}/audit`, cookies: { token } });
+    const entries = audit.json().entries.filter((e: { event: string }) => e.event === 'due_date_changed');
+    expect(entries).toHaveLength(1);
+  });
+});
+
 describe('idempotency', () => {
   it('replays instead of double-recording on the same key', async () => {
     const token = await signupAndGetCookie(app, 'user@example.com');
