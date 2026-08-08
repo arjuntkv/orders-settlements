@@ -1,6 +1,6 @@
 'use client';
 
-import { use, useMemo, useState } from 'react';
+import { use, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { formatCents, parseMoneyToCents, type OrderDTO, type PaymentDTO, type RefundDTO } from '@orders/core';
 import { Shell } from '@/components/shell';
@@ -77,7 +77,9 @@ function RefundForm({ order, onRecorded }: { order: OrderDTO; onRecorded: () => 
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  // one key per attempt-until-success: retries of a failed submit reuse it
+  // (that's the point), a NEW submission after success gets a fresh key
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -94,9 +96,13 @@ function RefundForm({ order, onRecorded }: { order: OrderDTO; onRecorded: () => 
         headers: { 'idempotency-key': idempotencyKey },
         body: JSON.stringify({ amountCents, date, note: note || undefined }),
       });
+      setAmount('');
+      setNote('');
+      setIdempotencyKey(crypto.randomUUID());
       onRecorded();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Network error, try again');
+    } finally {
       setBusy(false);
     }
   }
@@ -155,8 +161,9 @@ function PaymentForm({ order, onRecorded }: { order: OrderDTO; onRecorded: () =>
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  // one key per form fill: a double-click or a retried request records once
-  const idempotencyKey = useMemo(() => crypto.randomUUID(), []);
+  // one key per attempt-until-success: a double-click or retry records once,
+  // but the next intentional payment gets a fresh key
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID());
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -173,9 +180,13 @@ function PaymentForm({ order, onRecorded }: { order: OrderDTO; onRecorded: () =>
         headers: { 'idempotency-key': idempotencyKey },
         body: JSON.stringify({ amountCents, date, note: note || undefined }),
       });
+      setAmount('');
+      setNote('');
+      setIdempotencyKey(crypto.randomUUID());
       onRecorded();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Network error, try again');
+    } finally {
       setBusy(false);
     }
   }
